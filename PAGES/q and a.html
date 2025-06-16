@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="../style.css" />
+  <title>Doug Guide - Q&A</title>
+</head>
+
+<body>
+  <div class="div-navbar">
+    <nav class="navbar">
+      <img src="IMAGES/Doug.png" class="logo" alt="logo here">
+      <ul>
+        <li><a href="../index.html">Build</a></li>
+        <li><a href="drafts.html">Drafting</a></li>
+        <li><a href="playstyles.html">Playstyles</a></li>
+        <li><a href="pro play.html">Pro Play</a></li>
+        <li><a href="best maps.html">M and M</a></li>
+        <li><a href="all stats.html">All Stats</a></li>
+        <li><a href="q and a.html">Q&A</a></li>
+      </ul>
+    </nav>
+  </div>
+
+  <div class="sidebar-divider"></div>
+  <div class="main-content">
+    <h1>Doug Guide</h1>
+    <h2 class="subtitles">Questions and Answers</h2>
+    <p class="main-paragraph">Ask your Questions below!</p>
+  </div>
+
+  <div class="post-section">
+    <h2>Ask a Question</h2>
+    <input type="text" id="postAuthor" placeholder="Your name" />
+    <textarea id="postContent" placeholder="Write something..."></textarea>
+    <button onclick="submitPost()">Submit</button>
+    <div id="postsContainer"></div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyB7yvgLTzqgsl0JRE2k7F9xJhXeA_op_h4",
+      authDomain: "site-posts.firebaseapp.com",
+      projectId: "site-posts",
+      storageBucket: "site-posts.appspot.com",
+      messagingSenderId: "261685193780",
+      appId: "1:261685193780:web:937610d19087f3a34aee61"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    firebase.firestore().settings({ experimentalForceLongPolling: true });
+
+    async function submitPost() {
+      const author = document.getElementById("postAuthor").value.trim();
+      const content = document.getElementById("postContent").value.trim();
+
+      if (!author || !content) return alert("Fill out both fields!");
+
+      await db.collection("posts").add({
+        author,
+        content,
+        timestamp: Date.now(),
+        replies: []
+      });
+
+      document.getElementById("postAuthor").value = "";
+      document.getElementById("postContent").value = "";
+      loadPosts();
+    }
+
+    async function submitReply(postId, parentIndex = null) {
+      const authorInput = document.querySelector(`.reply-author-${postId}-${parentIndex}`);
+      const contentInput = document.querySelector(`.reply-content-${postId}-${parentIndex}`);
+      const author = authorInput.value.trim();
+      const content = contentInput.value.trim();
+
+      if (!author || !content) return alert("Fill out both reply fields!");
+
+      const postRef = db.collection("posts").doc(postId);
+      const postDoc = await postRef.get();
+      const data = postDoc.data();
+      const replies = data.replies || [];
+
+      const replyObj = {
+        author,
+        content,
+        timestamp: Date.now(),
+        replies: []
+      };
+
+      if (parentIndex === null) {
+        replies.push(replyObj);
+      } else {
+        replies[parentIndex].replies = replies[parentIndex].replies || [];
+        replies[parentIndex].replies.push(replyObj);
+      }
+
+      await postRef.update({ replies });
+      loadPosts();
+    }
+
+    function renderReplyBox(postId, parentIndex) {
+      return `
+        <div class="reply-form nested">
+          <input type="text" placeholder="Your name" class="reply-author-${postId}-${parentIndex}" />
+          <input type="text" placeholder="Write a reply..." class="reply-content-${postId}-${parentIndex}" />
+          <button onclick="submitReply('${postId}', ${parentIndex})">Submit Reply</button>
+        </div>
+      `;
+    }
+
+    function renderReplies(replies, postId) {
+      return replies.map((reply, index) => `
+        <div class="reply">
+          <strong>${reply.author}</strong>: ${reply.content}
+          <div class="reply-time">${new Date(reply.timestamp).toLocaleString()}</div>
+          <button onclick="toggleNestedReply('${postId}', ${index})">Reply</button>
+          <div id="nested-reply-${postId}-${index}" style="display:none;">
+            ${renderReplyBox(postId, index)}
+          </div>
+          ${reply.replies?.length ? '<div class="nested-replies">' + renderReplies(reply.replies, postId) + '</div>' : ''}
+        </div>
+      `).join("");
+    }
+
+    function toggleNestedReply(postId, index) {
+      const form = document.getElementById(`nested-reply-${postId}-${index}`);
+      form.style.display = form.style.display === "none" ? "block" : "none";
+    }
+
+    async function loadPosts() {
+      const container = document.getElementById("postsContainer");
+      container.innerHTML = "";
+      const snapshot = await db.collection("posts").orderBy("timestamp", "desc").get();
+
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const postId = doc.id;
+
+        const postDiv = document.createElement("div");
+        postDiv.classList.add("post-card");
+
+        postDiv.innerHTML = `
+          <div class="post-header">
+            <span class="post-author">${data.author}</span>
+            <span class="post-time">${new Date(data.timestamp).toLocaleString()}</span>
+          </div>
+          <div class="post-body">${data.content}</div>
+          <button onclick="toggleNestedReply('${postId}', null)">Reply</button>
+          <div id="nested-reply-${postId}-null" style="display:none;">
+            ${renderReplyBox(postId, null)}
+          </div>
+          <div class="replies-section">
+            ${renderReplies(data.replies || [], postId)}
+          </div>
+        `;
+
+        container.appendChild(postDiv);
+      });
+    }
+
+    window.onload = loadPosts;
+  </script>
+
+  <style>
+    .post-section {
+        max-width: 600px;
+        margin: 50px auto;
+        padding: 15px;
+        background: #f2f2f2;
+        border-radius: 10px;
+    }
+
+    .post-card {
+        background: white;
+        padding: 15px;
+        margin-top: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .post-header {
+        display: flex;
+        justify-content: space-between;
+        color: #555;
+        font-size: 14px;
+        margin-bottom: 5px;
+    }
+
+    .post-author {
+        font-weight: bold;
+        color: #333;
+    }
+
+    .post-body {
+        font-size: 16px;
+        color: #222;
+        margin-bottom: 12px;
+    }
+
+    .replies-section {
+        margin-top: 12px;
+    }
+
+    .reply {
+        background: #f8f9fa;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 10px;
+        margin-top: 10px;
+        font-size: 14px;
+        color: #222;
+    }
+
+    .reply strong {
+        font-size: 14px;
+        color: #111;
+    }
+
+    .reply-time {
+        font-size: 12px;
+        color: #999;
+        margin-top: 2px;
+    }
+
+    .reply button {
+        margin-top: 6px;
+        font-size: 13px;
+        background: none;
+        border: none;
+        color: #0079d3;
+        cursor: pointer;
+        padding: 0;
+    }
+
+    .reply button:hover {
+        text-decoration: underline;
+        
+    }
+
+    .nested-replies {
+        margin-left: 25px;
+        border-left: 2px solid #ccc;
+        padding-left: 12px;
+        margin-top: 10px;
+    }
+
+    .reply-form input {
+        width: 48%;
+        padding: 6px;
+        margin: 4px 1%;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+
+    .reply-form button {
+        margin-top: 6px;
+        padding: 6px;
+        border: none;
+        border-radius: 4px;
+        background-color: #0077cc;
+        color: white;
+        font-size: 14px;
+    }
+  </style>
+</body>
+</html>
+
+
+
