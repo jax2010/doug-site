@@ -3,8 +3,10 @@
 <head>
   <link rel="stylesheet" href="../style.css" />
   <title>Doug Guide - Q&A</title>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.google.com/recaptcha/api.js?render=6Le6SmMrAAAAAFv8rpiy5ZwRbPWjnJAx-zquXA3Q"></script>
 </head>
-
 <body>
   <div class="div-navbar">
     <nav class="navbar">
@@ -36,9 +38,6 @@
     <div id="postsContainer"></div>
   </div>
 
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-
   <script>
     const firebaseConfig = {
       apiKey: "AIzaSyB7yvgLTzqgsl0JRE2k7F9xJhXeA_op_h4",
@@ -59,11 +58,15 @@
 
       if (!author || !content) return alert("Fill out both fields!");
 
+      const token = await grecaptcha.execute('6Le6SmMrAAAAAFv8rpiy5ZwRbPWjnJAx-zquXA3Q', {action: 'submit'});
+      if (!token) return alert("reCAPTCHA failed.");
+
       await db.collection("posts").add({
         author,
         content,
         timestamp: Date.now(),
-        replies: []
+        replies: [],
+        recaptcha: token
       });
 
       document.getElementById("postAuthor").value = "";
@@ -78,6 +81,9 @@
       const content = contentInput.value.trim();
 
       if (!author || !content) return alert("Fill out both reply fields!");
+
+      const token = await grecaptcha.execute('6Le6SmMrAAAAAFv8rpiy5ZwRbPWjnJAx-zquXA3Q', {action: 'reply'});
+      if (!token) return alert("reCAPTCHA failed.");
 
       const postRef = db.collection("posts").doc(postId);
       const postDoc = await postRef.get();
@@ -162,108 +168,110 @@
       });
     }
 
-    window.onload = loadPosts;
+    window.onload = () => {
+      grecaptcha.ready(() => console.log("reCAPTCHA loaded"));
+      loadPosts();
+    };
   </script>
 
   <style>
     .post-section {
-        max-width: 600px;
-        margin: 50px auto;
-        padding: 15px;
-        background: #f2f2f2;
-        border-radius: 10px;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 15px;
+      background: #f2f2f2;
+      border-radius: 10px;
     }
 
     .post-card {
-        background: white;
-        padding: 15px;
-        margin-top: 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      background: white;
+      padding: 15px;
+      margin-top: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
 
     .post-header {
-        display: flex;
-        justify-content: space-between;
-        color: #555;
-        font-size: 14px;
-        margin-bottom: 5px;
+      display: flex;
+      justify-content: space-between;
+      color: #555;
+      font-size: 14px;
+      margin-bottom: 5px;
     }
 
     .post-author {
-        font-weight: bold;
-        color: #333;
+      font-weight: bold;
+      color: #333;
     }
 
     .post-body {
-        font-size: 16px;
-        color: #222;
-        margin-bottom: 12px;
+      font-size: 16px;
+      color: #222;
+      margin-bottom: 12px;
     }
 
     .replies-section {
-        margin-top: 12px;
+      margin-top: 12px;
     }
 
     .reply {
-        background: #f8f9fa;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-        padding: 10px;
-        margin-top: 10px;
-        font-size: 14px;
-        color: #222;
+      background: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 10px;
+      margin-top: 10px;
+      font-size: 14px;
+      color: #222;
     }
 
     .reply strong {
-        font-size: 14px;
-        color: #111;
+      font-size: 14px;
+      color: #111;
     }
 
     .reply-time {
-        font-size: 12px;
-        color: #999;
-        margin-top: 2px;
+      font-size: 12px;
+      color: #999;
+      margin-top: 2px;
     }
 
     .reply button {
-        margin-top: 6px;
-        font-size: 13px;
-        background: none;
-        border: none;
-        color: #0079d3;
-        cursor: pointer;
-        padding: 0;
+      margin-top: 6px;
+      font-size: 13px;
+      background: none;
+      border: none;
+      color: #0079d3;
+      cursor: pointer;
+      padding: 0;
     }
 
     .reply button:hover {
-        text-decoration: underline;
-        
+      text-decoration: underline;
     }
 
     .nested-replies {
-        margin-left: 25px;
-        border-left: 2px solid #ccc;
-        padding-left: 12px;
-        margin-top: 10px;
+      margin-left: 25px;
+      border-left: 2px solid #ccc;
+      padding-left: 12px;
+      margin-top: 10px;
     }
 
     .reply-form input {
-        width: 48%;
-        padding: 6px;
-        margin: 4px 1%;
-        border: 1px solid #ccc;
-        border-radius: 4px;
+      width: 48%;
+      padding: 6px;
+      margin: 4px 1%;
+      border: 1px solid #ccc;
+      border-radius: 4px;
     }
 
     .reply-form button {
-        margin-top: 6px;
-        padding: 6px;
-        border: none;
-        border-radius: 4px;
-        background-color: #0077cc;
-        color: white;
-        font-size: 14px;
+      margin-top: 6px;
+      padding: 6px;
+      border: none;
+      border-radius: 4px;
+      background-color: #0077cc;
+      color: white;
+      font-size: 14px;
     }
   </style>
 </body>
