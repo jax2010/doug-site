@@ -1,16 +1,73 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <link rel="stylesheet" href="../style.css" />
+  <meta charset="UTF-8" />
   <title>Doug Guide - Q&A</title>
+  <link rel="stylesheet" href="../style.css" />
+
+  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-  <script src="https://www.google.com/recaptcha/api.js?render=6Le6SmMrAAAAAFv8rpiy5ZwRbPWjnJAx-zquXA3Q"></script>
+
+  <!-- Google OAuth Client ID -->
+  <meta name="google-signin-client_id" content="261685193780-vpj7rq7mnrc9140nacemdd8g11khr5k9.apps.googleusercontent.com">
+
+  <style>
+    .auth-topright {
+      position: fixed;
+      top: 10px;
+      right: 20px;
+      z-index: 1000;
+      font-family: Verdana, Geneva, Tahoma, sans-serif;
+    }
+    .auth-topright span {
+      margin-right: 10px;
+    }
+    .auth-topright button {
+      font-size: 14px;
+      background-color: #0079d3;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .auth-topright button:hover {
+      background-color: #005fa3;
+    }
+    .post-card {
+      background: #f4f4f4;
+      border-radius: 10px;
+      padding: 10px;
+      margin: 15px 0;
+    }
+    .reply {
+      margin-left: 20px;
+      padding-left: 10px;
+      border-left: 2px solid #ccc;
+    }
+    .nested-replies {
+      margin-top: 10px;
+    }
+    .reply-form {
+      margin-top: 10px;
+    }
+    .post-header, .reply-time {
+      font-size: 12px;
+      color: gray;
+    }
+  </style>
 </head>
+
 <body>
+  <!-- Google Auth Top Right -->
+  <div class="auth-topright" id="auth-section"></div>
+
+  <!-- Navigation -->
   <div class="div-navbar">
     <nav class="navbar">
-      <img src="IMAGES/Doug.png" class="logo" alt="logo here">
+      <img src="../IMAGES/Doug.png" class="logo" alt="logo here">
       <ul>
         <li><a href="../index.html">Build</a></li>
         <li><a href="drafts.html">Drafting</a></li>
@@ -30,9 +87,9 @@
     <p class="main-paragraph">Ask your Questions below!</p>
   </div>
 
-  <div class="post-section">
+  <div class="post-section" id="post-section" style="display:none;">
     <h2>Ask a Question</h2>
-    <input type="text" id="postAuthor" placeholder="Your name" />
+    <input type="text" id="postAuthor" disabled />
     <textarea id="postContent" placeholder="Write something..."></textarea>
     <button onclick="submitPost()">Submit</button>
     <div id="postsContainer"></div>
@@ -48,42 +105,61 @@
       appId: "1:261685193780:web:937610d19087f3a34aee61"
     };
 
-    firebase.initializeApp(firebaseConfig);
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
+    const auth = firebase.auth();
+    let currentUser = null;
+
     firebase.firestore().settings({ experimentalForceLongPolling: true });
 
+    auth.onAuthStateChanged(user => {
+      const authSection = document.getElementById("auth-section");
+      const postSection = document.getElementById("post-section");
+
+      if (user) {
+        currentUser = user;
+        authSection.innerHTML = `
+          <span>Logged in as <strong>${user.displayName}</strong></span>
+          <button onclick="logout()">Logout</button>
+        `;
+        document.getElementById("postAuthor").value = user.displayName;
+        postSection.style.display = "block";
+        loadPosts();
+      } else {
+        currentUser = null;
+        authSection.innerHTML = `<button onclick="login()">Login with Google</button>`;
+        postSection.style.display = "none";
+      }
+    });
+
+    function login() {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      auth.signInWithPopup(provider).catch(err => alert(err.message));
+    }
+
+    function logout() {
+      auth.signOut();
+    }
+
     async function submitPost() {
-      const author = document.getElementById("postAuthor").value.trim();
       const content = document.getElementById("postContent").value.trim();
-
-      if (!author || !content) return alert("Fill out both fields!");
-
-      const token = await grecaptcha.execute('6Le6SmMrAAAAAFv8rpiy5ZwRbPWjnJAx-zquXA3Q', {action: 'submit'});
-      if (!token) return alert("reCAPTCHA failed.");
+      if (!currentUser || !content) return alert("You must be logged in and fill in content!");
 
       await db.collection("posts").add({
-        author,
+        author: currentUser.displayName,
         content,
         timestamp: Date.now(),
-        replies: [],
-        recaptcha: token
+        replies: []
       });
 
-      document.getElementById("postAuthor").value = "";
       document.getElementById("postContent").value = "";
       loadPosts();
     }
 
     async function submitReply(postId, parentIndex = null) {
-      const authorInput = document.querySelector(`.reply-author-${postId}-${parentIndex}`);
       const contentInput = document.querySelector(`.reply-content-${postId}-${parentIndex}`);
-      const author = authorInput.value.trim();
-      const content = contentInput.value.trim();
-
-      if (!author || !content) return alert("Fill out both reply fields!");
-
-      const token = await grecaptcha.execute('6Le6SmMrAAAAAFv8rpiy5ZwRbPWjnJAx-zquXA3Q', {action: 'reply'});
-      if (!token) return alert("reCAPTCHA failed.");
+      const content = contentInput?.value.trim();
+      if (!currentUser || !content) return alert("Fill out reply!");
 
       const postRef = db.collection("posts").doc(postId);
       const postDoc = await postRef.get();
@@ -91,7 +167,7 @@
       const replies = data.replies || [];
 
       const replyObj = {
-        author,
+        author: currentUser.displayName,
         content,
         timestamp: Date.now(),
         replies: []
@@ -109,13 +185,13 @@
     }
 
     function renderReplyBox(postId, parentIndex) {
-      return `
+      return currentUser ? `
         <div class="reply-form nested">
-          <input type="text" placeholder="Your name" class="reply-author-${postId}-${parentIndex}" />
+          <input type="text" disabled value="${currentUser.displayName}" class="reply-author-${postId}-${parentIndex}" />
           <input type="text" placeholder="Write a reply..." class="reply-content-${postId}-${parentIndex}" />
           <button onclick="submitReply('${postId}', ${parentIndex})">Submit Reply</button>
         </div>
-      `;
+      ` : '';
     }
 
     function renderReplies(replies, postId) {
@@ -123,7 +199,7 @@
         <div class="reply">
           <strong>${reply.author}</strong>: ${reply.content}
           <div class="reply-time">${new Date(reply.timestamp).toLocaleString()}</div>
-          <button onclick="toggleNestedReply('${postId}', ${index})">Reply</button>
+          ${currentUser ? `<button onclick="toggleNestedReply('${postId}', ${index})">Reply</button>` : ''}
           <div id="nested-reply-${postId}-${index}" style="display:none;">
             ${renderReplyBox(postId, index)}
           </div>
@@ -155,10 +231,11 @@
             <span class="post-time">${new Date(data.timestamp).toLocaleString()}</span>
           </div>
           <div class="post-body">${data.content}</div>
-          <button onclick="toggleNestedReply('${postId}', null)">Reply</button>
-          <div id="nested-reply-${postId}-null" style="display:none;">
-            ${renderReplyBox(postId, null)}
-          </div>
+          ${currentUser ? `
+            <button onclick="toggleNestedReply('${postId}', null)">Reply</button>
+            <div id="nested-reply-${postId}-null" style="display:none;">
+              ${renderReplyBox(postId, null)}
+            </div>` : ''}
           <div class="replies-section">
             ${renderReplies(data.replies || [], postId)}
           </div>
@@ -167,115 +244,10 @@
         container.appendChild(postDiv);
       });
     }
-
-    window.onload = () => {
-      grecaptcha.ready(() => console.log("reCAPTCHA loaded"));
-      loadPosts();
-    };
   </script>
-
-  <style>
-    .post-section {
-      max-width: 600px;
-      margin: 50px auto;
-      padding: 15px;
-      background: #f2f2f2;
-      border-radius: 10px;
-    }
-
-    .post-card {
-      background: white;
-      padding: 15px;
-      margin-top: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    }
-
-    .post-header {
-      display: flex;
-      justify-content: space-between;
-      color: #555;
-      font-size: 14px;
-      margin-bottom: 5px;
-    }
-
-    .post-author {
-      font-weight: bold;
-      color: #333;
-    }
-
-    .post-body {
-      font-size: 16px;
-      color: #222;
-      margin-bottom: 12px;
-    }
-
-    .replies-section {
-      margin-top: 12px;
-    }
-
-    .reply {
-      background: #f8f9fa;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      padding: 10px;
-      margin-top: 10px;
-      font-size: 14px;
-      color: #222;
-    }
-
-    .reply strong {
-      font-size: 14px;
-      color: #111;
-    }
-
-    .reply-time {
-      font-size: 12px;
-      color: #999;
-      margin-top: 2px;
-    }
-
-    .reply button {
-      margin-top: 6px;
-      font-size: 13px;
-      background: none;
-      border: none;
-      color: #0079d3;
-      cursor: pointer;
-      padding: 0;
-    }
-
-    .reply button:hover {
-      text-decoration: underline;
-    }
-
-    .nested-replies {
-      margin-left: 25px;
-      border-left: 2px solid #ccc;
-      padding-left: 12px;
-      margin-top: 10px;
-    }
-
-    .reply-form input {
-      width: 48%;
-      padding: 6px;
-      margin: 4px 1%;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-    }
-
-    .reply-form button {
-      margin-top: 6px;
-      padding: 6px;
-      border: none;
-      border-radius: 4px;
-      background-color: #0077cc;
-      color: white;
-      font-size: 14px;
-    }
-  </style>
 </body>
 </html>
+
 
 
 
